@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<bitfields product="ssgti_stocktrader">
+	<bitfielddefs>
+		<group name="ugp">
+			<group name="ssgti_stocktrader_perms">
+				<bitfield name="canview"                 group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_canview"             install="1,2,3,4,5,6,7">1</bitfield>
+				<bitfield name="stoplossorder"           group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_stoplossorder"       install="1,2,3,4,5,6,7">2</bitfield>
+				<bitfield name="instantinvestorder"      group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_instantinvestorder"  install="1,2,3,4,5,6,7">4</bitfield>
+				<bitfield name="canobtaincustomname"     group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_canobtaincustomname" install="1,2,3,4,5,6,7">8</bitfield>
+				<bitfield name="stockexception"          group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_stockexception"      install="1,2,3,4,5,6,7">16</bitfield>
+				<bitfield name="socialparticipation"     group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_socialparticipation" install="1,2,3,4,5,6,7">32</bitfield>
+				<bitfield name="socialaccess"            group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_socialaccess"        install="1,2,3,4,5,6,7">64</bitfield>
+				<bitfield name="canclearselfhistory"     group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_canclearselfhistory" install="1,2,3,4,5,6,7">128</bitfield>
+				<bitfield name="ssgtistocktrader_exrate" group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_exchangerate"        intperm="true"         >1</bitfield>
+				<bitfield name="ssgtistocktrader_compp"  group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_commpurchpercent"    intperm="true"         >2</bitfield>
+				<bitfield name="ssgtistocktrader_compfr" group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_commpurchflatrate"   intperm="true"         >10</bitfield>
+				<bitfield name="ssgtistocktrader_comsp"  group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_commsellpercent"     intperm="true"         >2</bitfield>
+				<bitfield name="ssgtistocktrader_comsfr" group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_commsellflatrate"    intperm="true"         >10</bitfield>
+				<bitfield name="ssgtistocktrader_cgt"    group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_capitalgainstax"     intperm="true"         >10</bitfield>
+				<bitfield name="ssgtistocktrader_maxstc" group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_maxstocks"           intperm="true"         >6</bitfield>
+				<bitfield name="ssgtistocktrader_maxshr" group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_maxshares"           intperm="true"         >500</bitfield>
+				<bitfield name="ssgtistocktrader_itr"    group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_inv_time_required"   intperm="true"         >500</bitfield>
+				<bitfield name="ssgtistocktrader_stocks" group="ssgti_stocktrader_perms" phrase="ssgti_stocktrader_allowedstocks"       intperm="true"         ></bitfield>
+			</group>
+		</group>
+		<group name="nocache">
+			<group name="ssgti_stocktrader_stags1">
+				<bitfield name="a" >1</bitfield>
+				<bitfield name="a2">2</bitfield>
+				<bitfield name="a5">4</bitfield>
+				<bitfield name="b" >8</bitfield>
+				<bitfield name="b2">16</bitfield>
+				<bitfield name="b3">32</bitfield>
+				<bitfield name="b4">64</bitfield>
+				<bitfield name="b6">128</bitfield>
+				<bitfield name="c" >256</bitfield>
+				<bitfield name="c1">512</bitfield>
+				<bitfield name="c3">1024</bitfield>
+				<bitfield name="c6">2048</bitfield>
+				<bitfield name="c8">4096</bitfield>
+				<bitfield name="d" >8192</bitfield>
+				<bitfield name="d1">16384</bitfield>
+				<bitfield name="d2">32768</bitfield>
+				<bitfield name="e" >65536</bitfield>
+				<bitfield name="e1">131072</bitfield>
+				<bitfield name="e7">262144</bitfield>
+				<bitfield name="e8">524288</bitfield>
+				<bitfield name="e9">1048576</bitfield>
+				<bitfield name="g" >2097152</bitfield>
+				<bitfield name="g1">4194304</bitfield>
+				<bitfield name="g3">8388608</bitfield>
+				<bitfield name="g4">16777216</bitfield>
+				<bitfield name="g5">33554432</bitfield>
+				<bitfield name="g6">67108864</bitfield>
+				<bitfield name="h" >134217728</bitfield>
+			</group>
+			<group name="ssgti_stocktrader_stags2">
+				<bitfield name="i" >1</bitfield>
+				<bitfield name="i5">2</bitfield>
+				<bitfield name="j" >4</bitfield>
+				<bitfield name="j1">8</bitfield>
+				<bitfield name="j3">16</bitfield>
+				<bitfield name="j4">32</bitfield>
+				<bitfield name="j5">64</bitfield>
+				<bitfield name="j6">128</bitfield>
+				<bitfield name="k" >256</bitfield>
+				<bitfield name="k1">512</bitfield>
+				<bitfield name="k2">1024</bitfield>
+				<bitfield name="k3">2048</bitfield>
+				<bitfield name="k4">4096</bitfield>
+				<bitfield name="k5">8192</bitfield>
+				<bitfield name="l" >16384</bitfield>
+				<bitfield name="l1">32768</bitfield>
+				<bitfield name="l2">65536</bitfield>
+				<bitfield name="l3">131072</bitfield>
+				<bitfield name="m" >262144</bitfield>
+				<bitfield name="m2">524288</bitfield>
+				<bitfield name="m3">1048576</bitfield>
+				<bitfield name="m4">2097152</bitfield>
+				<bitfield name="m5">4194304</bitfield>
+				<bitfield name="m6">8388608</bitfield>
+				<bitfield name="m7">16777216</bitfield>
+				<bitfield name="m8">33554432</bitfield>
+				<bitfield name="n4">67108864</bitfield>
+				<bitfield name="o" >134217728</bitfield>
+			</group>
+			<group name="ssgti_stocktrader_stags3">
+				<bitfield name="p" >1</bitfield>
+				<bitfield name="p1">2</bitfield>
+				<bitfield name="p2">4</bitfield>
+				<bitfield name="p5">8</bitfield>
+				<bitfield name="p6">16</bitfield>
+				<bitfield name="q" >32</bitfield>
+				<bitfield name="r" >64</bitfield>
+				<bitfield name="r1">128</bitfield>
+				<bitfield name="r2">256</bitfield>
+				<bitfield name="r5">512</bitfield>
+				<bitfield name="r6">1024</bitfield>
+				<bitfield name="r7">2048</bitfield>
+				<bitfield name="s1">4096</bitfield>
+				<bitfield name="s7">8192</bitfield>
+				<bitfield name="t1">16384</bitfield>
+				<bitfield name="t6">32768</bitfield>
+				<bitfield name="t7">65536</bitfield>
+				<bitfield name="t8">131072</bitfield>
+				<bitfield name="v" >262144</bitfield>
+				<bitfield name="v1">524288</bitfield>
+				<bitfield name="v7">1048576</bitfield>
+				<bitfield name="w" >2097152</bitfield>
+				<bitfield name="w1">4194304</bitfield>
+				<bitfield name="w4">8388608</bitfield>
+				<bitfield name="x" >16777216</bitfield>
+				<bitfield name="y" >33554432</bitfield>
+			</group>
+			<group name="ssgti_stocktrader_navblocks">
+				<bitfield name="profile">1</bitfield>
+				<bitfield name="stats"  >2</bitfield>
+				<bitfield name="rules"  >4</bitfield>
+			</group>
+			<group name="ssgti_stocktrader_ushbits">
+				<bitfield name="shares"   >1</bitfield>
+				<bitfield name="pdate"    >2</bitfield>
+				<bitfield name="lpurchase">4</bitfield>
+				<bitfield name="pprice"   >8</bitfield>
+				<bitfield name="cprice"   >16</bitfield>
+				<bitfield name="gain"     >32</bitfield>
+				<bitfield name="gainp"    >64</bitfield>
+				<bitfield name="tpprice"  >128</bitfield>
+				<bitfield name="tcprice"  >256</bitfield>
+				<bitfield name="tgain"    >512</bitfield>
+			</group>
+		</group>
+		<group name="misc">
+			<group name="ssgti_stocktrader_opts">
+				<bitfield name="active"            >1</bitfield>
+				<bitfield name="stoplossorder"     >2</bitfield>
+				<bitfield name="instantinvestorder">4</bitfield>
+				<bitfield name="hidesocialacts"    >8</bitfield>
+				<bitfield name="stocktablelayout"  >16</bitfield>
+			</group>
+		</group>
+	</bitfielddefs>
+</bitfields>
+
+<!-- CVS: $RCSfile$ - $Revision: 11111 $ -->

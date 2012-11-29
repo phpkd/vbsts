@@ -1,0 +1,1172 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<product productid="ssgti_stocktrader" active="1">
+	<title>SSGTI - Stock Trader</title>
+	<description><![CDATA[This product allow users to use forum's virtual money to invest in stock with real stock rates. They'll be able to buy & sell at market values using "Yahoo Stock Quotes".]]></description>
+	<version>3.8.100</version>
+	<url><![CDATA[http://www.vbulletin.org/forum/misc.php?do=producthelp&pid=ssgti_stocktrader]]></url>
+	<versioncheckurl><![CDATA[http://www.vbulletin.org/forum/misc.php?do=producthelp&pid=ssgti_stocktrader]]></versioncheckurl>
+	<dependencies>
+		<dependency dependencytype="vbulletin" minversion="3.8.0" maxversion="3.8.99" />
+	</dependencies>
+	<codes>
+		<code version="*">
+			<installcode><![CDATA[if (!file_exists(DIR . '/includes/class_ssgti_stocktrader.php') OR !file_exists(DIR . '/includes/functions_ssgti_stocktrader.php') OR !file_exists(DIR . '/includes/xml/bitfield_ssgti_stocktrader.xml') OR !file_exists(DIR . '/includes/cron/ssgti_stocktrader.php'))
+{
+	print_dots_stop();
+	print_cp_message('Please upload the files that came with the "SSGTI - Stock Trader" product before installing or upgrading!');
+}]]></installcode>
+			<uninstallcode />
+		</code>
+		<code version="3.8.100">
+			<installcode><![CDATA[$db->hide_errors();
+require_once(DIR . '/includes/class_dbalter.php');
+$db_alter =& new vB_Database_Alter_MySQL($db);
+
+$mysqlversion = $db->query_first("SELECT version() AS version");
+define('MYSQL_VERSION', $mysqlversion['version']);
+
+$enginetype = (version_compare(MYSQL_VERSION, '4.0.18', '<')) ? 'TYPE' : 'ENGINE';
+$tabletype = (version_compare(MYSQL_VERSION, '4.1', '<')) ? 'HEAP' : 'MEMORY';
+
+/* Stocks that user's own */
+$db->query_write("
+	CREATE TABLE IF NOT EXISTS `" . TABLE_PREFIX . "ssgti_stocktrader`
+	(
+		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+		`userid` int(10) unsigned NOT NULL DEFAULT '0',
+		`stockid` varchar(10) NOT NULL DEFAULT '',
+		`dateline` int(10) unsigned NOT NULL DEFAULT '0',
+		`lastupdate` int(10) unsigned NOT NULL DEFAULT '0',
+		`shares` int(10) unsigned NOT NULL DEFAULT '0',
+		`price` decimal(12,2) unsigned NOT NULL DEFAULT '0.00',
+		PRIMARY KEY (`id`),
+		UNIQUE KEY `ustockid` (`userid`,`stockid`),
+		KEY `stockid` (`stockid`)
+	) $enginetype=MyISAM
+");
+
+/* History of all transactions done (IN/OUT) */
+$db->query_write("
+	CREATE TABLE IF NOT EXISTS `" . TABLE_PREFIX . "ssgti_stocktrader_history`
+	(
+		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+		`userid` int(10) unsigned NOT NULL DEFAULT '0',
+		`stockid` varchar(10) NOT NULL DEFAULT '',
+		`dateline` int(10) unsigned NOT NULL DEFAULT '0',
+		`shares` int(10) unsigned NOT NULL DEFAULT '0',
+		`price` decimal(12,2) unsigned NOT NULL DEFAULT '0.00',
+		`type` enum('purchase','sale') NOT NULL DEFAULT 'purchase',
+		`bot` smallint(5) unsigned NOT NULL DEFAULT '0',
+		PRIMARY KEY (`id`),
+		KEY `stockid` (`stockid`)
+	) $enginetype=MyISAM
+");
+
+/* Instat Invest / Stop Lose - Orders*/
+$db->query_write("
+	CREATE TABLE IF NOT EXISTS `" . TABLE_PREFIX . "ssgti_stocktrader_iislo`
+	(
+		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+		`userid` int(10) unsigned NOT NULL DEFAULT '0',
+		`stockid` varchar(10) NOT NULL DEFAULT '',
+		`dateline` int(10) unsigned NOT NULL DEFAULT '0',
+		`shares` int(10) unsigned NOT NULL DEFAULT '0',
+		`price` decimal(12,2) unsigned NOT NULL DEFAULT '0.00',
+		`type` enum('purchase','sale') NOT NULL DEFAULT 'purchase',
+		PRIMARY KEY (`id`),
+		KEY `stockid` (`stockid`)
+	) $enginetype=MyISAM
+");
+
+/* Cache Stocks Data (Only Used Stocks) */
+$db->query_write("
+	CREATE TABLE IF NOT EXISTS `" . TABLE_PREFIX . "ssgti_stocktrader_cache`
+	(
+		`stockid` varchar(10) NOT NULL DEFAULT '',
+		`dateline` int(10) unsigned NOT NULL DEFAULT '0',
+		`lastupdate` int(10) unsigned NOT NULL DEFAULT '0',
+		`stags` mediumtext,
+		`flag` enum('global','usergroup','user') NOT NULL DEFAULT 'global',
+		PRIMARY KEY (`stockid`)
+	) $enginetype=MyISAM
+");
+
+/* Global Info */
+$db->query_write("
+	CREATE TABLE IF NOT EXISTS `" . TABLE_PREFIX . "ssgti_stocktrader_global`
+	(
+		`varname` varchar(100) NOT NULL DEFAULT '',
+		`value` mediumtext,
+		PRIMARY KEY (`varname`),
+	) $enginetype=MyISAM
+");
+
+$db->query_write("
+	INSERT INTO `" . TABLE_PREFIX . "ssgti_stocktrader_global`
+	(`varname`, `asdasdasd`) VALUES
+	('stocks', 0),
+	('shares', 0),
+	('bank', 0),
+	('capital', 0),
+	('investments', 0),
+	('gain', 0),
+	('topten', ''),
+	('firstpurchase', ''),
+	('lastpurchase', ''),
+	('firstsale', ''),
+	('lastsale', ''),
+	('totalpurchase', 0),
+	('totalsales', 0)
+");
+
+
+if ($db_alter->fetch_table_info('usergroup'))
+{
+	$db_alter->add_field(array(
+		'name'       => 'ssgti_stocktrader_perms',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '0',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_exrate',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '1',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_compp',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '2',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_compfr',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '10',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_comsp',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '2',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_comsfr',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '10',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_cgt',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '6',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_maxstc',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '6',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_maxshr',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '6',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_itr',
+		'type'       => 'int',
+		'attributes' => 'unsigned',
+		'default'    => '6',
+	));
+
+	$db_alter->add_field(array(
+		'name'       => 'ssgtistocktrader_stocks',
+		'type'       => 'mediumtext',
+		'default'    => '',
+	));
+}
+
+if ($db_alter->fetch_table_info('user'))
+{
+	$db_alter->add_field(array(
+		'name'       => 'ssgti_stocktrader',
+		'type'       => 'mediumtext',
+		'default'    => '',
+	));
+}
+
+build_forum_permissions();
+$db->show_errors();]]></installcode>
+			<uninstallcode><![CDATA[$db->hide_errors();
+require_once(DIR . '/includes/class_dbalter.php');
+$db_alter =& new vB_Database_Alter_MySQL($db);
+
+$db->query_write("DROP TABLE `" . TABLE_PREFIX . "ssgti_stocktrader`");
+$db->query_write("DROP TABLE `" . TABLE_PREFIX . "ssgti_stocktrader_history`");
+$db->query_write("DROP TABLE `" . TABLE_PREFIX . "ssgti_stocktrader_iislo`");
+$db->query_write("DROP TABLE `" . TABLE_PREFIX . "ssgti_stocktrader_cache`");
+$db->query_write("DROP TABLE `" . TABLE_PREFIX . "ssgti_stocktrader_global`");
+
+if ($db_alter->fetch_table_info('usergroup'))
+{
+	$db_alter->drop_field('ssgti_stocktrader_perms');
+	$db_alter->drop_field('ssgtistocktrader_exrate');
+	$db_alter->drop_field('ssgtistocktrader_compp');
+	$db_alter->drop_field('ssgtistocktrader_compfr');
+	$db_alter->drop_field('ssgtistocktrader_comsp');
+	$db_alter->drop_field('ssgtistocktrader_comsfr');
+	$db_alter->drop_field('ssgtistocktrader_cgt');
+	$db_alter->drop_field('ssgtistocktrader_maxstc');
+	$db_alter->drop_field('ssgtistocktrader_maxshr');
+	$db_alter->drop_field('ssgtistocktrader_itr');
+	$db_alter->drop_field('ssgtistocktrader_stocks');
+}
+
+if ($db_alter->fetch_table_info('user'))
+{
+	$db_alter->drop_field('ssgti_stocktrader');
+}
+
+build_forum_permissions();
+$db->show_errors();]]></uninstallcode>
+		</code>
+	</codes>
+	<templates>
+		<template name="ssgti_stocktrader_cellbits" templatetype="template" date="1259015097" username="SolidSnake@GTI" version="3.8.100"><![CDATA[		<td class="alt1" align="center" title="$cellbittitle">
+			$cellbit
+		</td>
+]]></template>
+		<template name="ssgti_stocktrader_cellbuy" templatetype="template" date="1259016822" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<input type="checkbox" name="buy[$singlerow[s]]" value="1" id="cb_buy_$singlerow[s]" />]]></template>
+		<template name="ssgti_stocktrader_cellsell" templatetype="template" date="1259017215" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<input type="checkbox" name="sell[$singlerow[s]]" value="1" id="cb_sell_$singlerow[s]" />]]></template>
+		<template name="ssgti_stocktrader_headbits" templatetype="template" date="1259014442" username="SolidSnake@GTI" version="3.8.100"><![CDATA[		<td class="thead" align="center" nowrap="nowrap">
+			$headbittitle
+		</td>
+]]></template>
+		<template name="ssgti_stocktrader_modifyoptions" templatetype="template" date="1259062193" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<form action="profile.php?do=update$vboptions[ssgti_stocktrader_variable]" method="post">
+<input type="hidden" name="s" value="$session[sessionhash]" />
+<input type="hidden" name="securitytoken" value="$bbuserinfo[securitytoken]" />
+<input type="hidden" name="do" value="update$vboptions[ssgti_stocktrader_variable]" />
+
+
+<table class="tborder" cellpadding="$stylevar[cellpadding]" cellspacing="$stylevar[cellspacing]" border="0" width="100%" align="center">
+<tr>
+	<td class="tcat">
+		<a style="float:$stylevar[right]" href="#top" onclick="return toggle_collapse('ssgti_stocktrader')"><img id="collapseimg_ssgti_stocktrader" src="$stylevar[imgdir_button]/collapse_tcat$vbcollapse[collapseimg_ssgti_stocktrader].gif" alt="" border="0" /></a>
+		$vbphrase[ssgti_stocktrader_edit_options]
+	</td>
+</tr>
+<tr>
+	<td class="panelsurround" align="center">
+	<div class="panel" id="collapseobj_ssgti_stocktrader" style="$vbcollapse[collapseobj_ssgti_stocktrader]">
+		<div style="width:$stylevar[formwidth_usercp]" align="$stylevar[left]">
+
+			<fieldset class="fieldset">
+				<legend>$vbphrase[ssgti_stocktrader_options_title]</legend>
+				<table cellpadding="0" cellspacing="$stylevar[formspacer]" border="0" width="100%">
+				<tr>
+					<td>$vbphrase[ssgti_stocktrader_options_desc]</td>
+				</tr>
+				<tr>
+					<td>
+						<div><label for="cb_ssgti_stocktrader_active"><input type="checkbox" name="options[ssgti_stocktrader_active]" value="1" id="cb_ssgti_stocktrader_active" $checked[ssgti_stocktrader_active] />$vbphrase[ssgti_stocktrader_options_onoff]</label><input type="hidden" name="set_options[ssgti_stocktrader_active]" value="1" /></div>
+					</td>
+				</tr>
+				</table>
+			</fieldset>
+
+		</div>
+	</div>
+
+	<div style="margin-top:$stylevar[cellpadding]px">
+		<input type="submit" class="button" value="$vbphrase[save_changes]" accesskey="s" />
+		<input type="reset" class="button" value="$vbphrase[reset_fields]" accesskey="r" />
+	</div>
+	</td>
+</tr>
+</table>
+
+</form>]]></template>
+		<template name="ssgti_stocktrader_modifyprivacy_bit" templatetype="template" date="1259060831" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<tr>
+	<td width="55%" nowrap="nowrap">
+		<label for="blockprivacy_ssgti_stocktrader">$vbphrase[ssgti_stocktrader]:</label>
+	</td>
+	<td width="10%">&nbsp;</td>
+	<td width="55%" align="$stylevar[left]">
+		<select name="blockprivacy[ssgti_stocktrader]" id="blockprivacy_ssgti_stocktrader">
+			<option value="0" $ssgti_stocktrader_selected[0]>$vbphrase[everyone]</option>
+			<option value="1" $ssgti_stocktrader_selected[1]>$vbphrase[registered_members]</option>
+			<option value="2" $ssgti_stocktrader_selected[2]>$vbphrase[your_contacts]</option>
+			<option value="3" $ssgti_stocktrader_selected[3]>$vbphrase[your_friends]</option>
+		</select>
+	</td>
+</tr>
+]]></template>
+		<template name="ssgti_stocktrader_navbar" templatetype="template" date="1259045560" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<td class="vbmenu_control"><a href="$vboptions[ssgti_stocktrader_filename].php$session[sessionurl_q]">$vboptions[ssgti_stocktrader_title]</a></td>]]></template>
+		<template name="ssgti_stocktrader_quicklinks" templatetype="template" date="1259045597" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<tr><td class="vbmenu_option"><a href="$vboptions[ssgti_stocktrader_filename].php$session[sessionurl_q]">$vboptions[ssgti_stocktrader_title]</a></td></tr>]]></template>
+		<template name="ssgti_stocktrader_rowbits" templatetype="template" date="1259010488" username="SolidSnake@GTI" version="3.8.100"><![CDATA[	<tr>
+		$cellbits
+	</tr>]]></template>
+		<template name="SSGTI_STOCKTRADER_SHELL" templatetype="template" date="1259975017" username="SolidSnake@GTI" version="3.8.100"><![CDATA[$stylevar[htmldoctype]
+<html xmlns="http://www.w3.org/1999/xhtml" dir="$stylevar[textdirection]" lang="$stylevar[languagecode]">
+<head>
+$headinclude
+	<title>$vboptions[bbtitle] - $pagetitle</title>
+</head>
+<body>
+$header
+$navbar
+
+<!-- table to support left column nav -->
+<table cellpadding="0" cellspacing="0" border="0" width="100%" align="center">
+<tr valign="top">
+<td>
+
+<!-- Stock Trader Nav -->
+<table class="tborder" cellpadding="$stylevar[cellpadding]" cellspacing="$stylevar[cellspacing]" border="0" width="175">
+	<tr><td class="tcat" nowrap="nowrap"><a style="float:$stylevar[right]" href="profile.php?$session[sessionurl]do=$vboptions[ssgti_stocktrader_variable]"><img src="$stylevar[imgdir_misc]/userfield_edit.gif" alt="$vboptions[ssgti_stocktrader_edit_options]" border="0" /></a><a href="$vboptions[ssgti_stocktrader_filename].php$session[sessionurl_q]">$vboptions[ssgti_stocktrader_title]</a></td></tr>
+	<tr><td class="thead"><a style="float:$stylevar[right]" href="#top" onclick="return toggle_collapse('ssgti_stocktrader_nav')"><img id="collapseimg_ssgti_stocktrader_nav" src="$stylevar[imgdir_button]/collapse_thead$vbcollapse[collapseimg_ssgti_stocktrader_nav].gif" alt="" border="0" /></a>$vbphrase[ssgti_stocktrader_navhead_nav]</td></tr>
+	<tbody id="collapseobj_ssgti_stocktrader_nav" style="$vbcollapse[collapseobj_ssgti_stocktrader_nav]">
+	<tr><td class="$navclass[home]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php$session[sessionurl_q]">$vboptions[ssgti_stocktrader_title]</a></td></tr>
+	<tr><td class="$navclass[invest]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=invest">$vbphrase[ssgti_stocktrader_nav_invest]</a></td></tr>
+	<tr><td class="$navclass[slo]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=slo">$vbphrase[ssgti_stocktrader_nav_slo]</a></td></tr>
+	<tr><td class="$navclass[iio]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=iio">$vbphrase[ssgti_stocktrader_nav_iio]</a></td></tr>
+	<tr><td class="$navclass[purchasehistory]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=history&amp;type=purchase">$vbphrase[ssgti_stocktrader_nav_purchase_history]</a></td></tr>
+	<tr><td class="$navclass[historysales]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=history&amp;type=sales">$vbphrase[ssgti_stocktrader_nav_sales_history]</a></td></tr>
+	<tr><td class="$navclass[socialgroups]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=socialgroups">$vbphrase[ssgti_stocktrader_nav_socialgroups]</a></td></tr>
+	<tr><td class="$navclass[toplist]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=toplist">$vbphrase[ssgti_stocktrader_nav_statistics]</a></td></tr>
+	<tr><td class="$navclass[toplist]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=toplist">$vbphrase[ssgti_stocktrader_nav_toplist]</a></td></tr>
+	<tr><td class="$navclass[spyeye]" nowrap="nowrap"><a href="$vboptions[ssgti_stocktrader_filename].php?$session[sessionurl]do=spyeye">$vbphrase[ssgti_stocktrader_nav_spyeye]</a></td></tr>
+	<tbody>
+	<if condition="$show[ssgti_stocktrader_profile]">
+	<tr><td class="thead"><a style="float:$stylevar[right]" href="#top" onclick="return toggle_collapse('ssgti_stocktrader_profile')"><img id="collapseimg_ssgti_stocktrader_profile" src="$stylevar[imgdir_button]/collapse_thead$vbcollapse[collapseimg_ssgti_stocktrader_profile].gif" alt="" border="0" /></a>$vbphrase[ssgti_stocktrader_navhead_profile]</td></tr>
+	<tbody id="collapseobj_ssgti_stocktrader_profile" style="$vbcollapse[collapseobj_ssgti_stocktrader_profile]">
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[trader]">$vbphrase[ssgti_stocktrader_profile_trader]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[level]">$vbphrase[ssgti_stocktrader_profile_level]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[points]">$vbphrase[ssgti_stocktrader_profile_points]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[stocks]" 2="$ssgti_stocktrader[shares]">$vbphrase[ssgti_stocktrader_profile_stocks_shares]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[gain]" 2="$ssgti_stocktrader[gainpercentage]">$vbphrase[ssgti_stocktrader_profile_gain]</phrase></td></tr>
+	<tbody>
+	</if>
+	<if condition="$show[ssgti_stocktrader_stats]">
+	<tr><td class="thead"><a style="float:$stylevar[right]" href="#top" onclick="return toggle_collapse('ssgti_stocktrader_stats')"><img id="collapseimg_ssgti_stocktrader_stats" src="$stylevar[imgdir_button]/collapse_thead$vbcollapse[collapseimg_ssgti_stocktrader_stats].gif" alt="" border="0" /></a>$vbphrase[ssgti_stocktrader_navhead_stats]</td></tr>
+	<tbody id="collapseobj_ssgti_stocktrader_stats" style="$vbcollapse[collapseobj_ssgti_stocktrader_stats]">
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[traders]">$vbphrase[ssgti_stocktrader_stats_traders]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[toptrader]" 2="$ssgti_stocktrader[toptraderlevel]" 3="$ssgti_stocktrader[toptraderpoints]">$vbphrase[ssgti_stocktrader_stats_toptrader]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[totalpoints]">$vbphrase[ssgti_stocktrader_stats_points]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[totalstocks]" 2="$ssgti_stocktrader[totalshares]">$vbphrase[ssgti_stocktrader_stats_stocks_shares]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[toalgain]" 2="$ssgti_stocktrader[toalgainpercentage]">$vbphrase[ssgti_stocktrader_stats_toalgain]</phrase></td></tr>
+	<tbody>
+	</if>
+	<if condition="$show[ssgti_stocktrader_rules]">
+	<tr><td class="thead"><a style="float:$stylevar[right]" href="#top" onclick="return toggle_collapse('ssgti_stocktrader_rules')"><img id="collapseimg_ssgti_stocktrader_rules" src="$stylevar[imgdir_button]/collapse_thead$vbcollapse[collapseimg_ssgti_stocktrader_rules].gif" alt="" border="0" /></a>$vbphrase[ssgti_stocktrader_navhead_rules]</td></tr>
+	<tbody id="collapseobj_ssgti_stocktrader_rules" style="$vbcollapse[collapseobj_ssgti_stocktrader_rules]">
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[exrate1]" 2="$ssgti_stocktrader[exrate2]">$vbphrase[ssgti_stocktrader_rules_exrate]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><span style="float:$stylevar[right]"><phrase 1="$ssgti_stocktrader[compfr]">$vbphrase[ssgti_stocktrader_rules_compfr]</phrase></span><phrase 1="$ssgti_stocktrader[compp]">$vbphrase[ssgti_stocktrader_rules_compp]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><span style="float:$stylevar[right]"><phrase 1="$ssgti_stocktrader[comsfr]">$vbphrase[ssgti_stocktrader_rules_comsfr]</phrase></span><phrase 1="$ssgti_stocktrader[comsp]">$vbphrase[ssgti_stocktrader_rules_comsp]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[cgt]">$vbphrase[ssgti_stocktrader_rules_cgt]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[maxstc]">$vbphrase[ssgti_stocktrader_rules_maxstc]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[maxshr]">$vbphrase[ssgti_stocktrader_rules_maxshr]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[itr]">$vbphrase[ssgti_stocktrader_rules_itr]</phrase></td></tr>
+	<tr><td class="alt1 smallfont" nowrap="nowrap"><phrase 1="$ssgti_stocktrader[stocks]">$vbphrase[ssgti_stocktrader_rules_stocks]</phrase></td></tr>
+	<tbody>
+	</if>
+</tbody>
+</table>
+<!-- / Stock Trader Nav -->
+
+<if condition="$show['popups'] AND $show['moderation']">
+<!-- moderation popups -->
+<if condition="$show['deleteditems']">
+<div class="vbmenu_popup" id="nav_deleteditems_menu" style="display:none">
+	<table cellpadding="4" cellspacing="1" border="0">
+
+		<tr><td class="thead" nowrap="nowrap">$vbphrase[deleted_items]</td></tr>
+		<if condition="$show['deletedposts']">
+		<tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewthreads&amp;type=deleted">$vbphrase[threads]</a></td></tr>
+		<tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewposts&amp;type=deleted">$vbphrase[posts]</a></td></tr>
+		</if>
+		<if condition="$show['deletedvms']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewvms&amp;type=deleted">$vbphrase[visitor_messages]</a></td></tr></if>
+		<if condition="$show['deletedgms']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewgms&amp;type=deleted">$vbphrase[group_messages]</a></td></tr></if>
+		<if condition="$show['deleteddiscussions']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewdiscussions&amp;type=deleted">$vbphrase[group_discussions]</a></td></tr></if>
+		<if condition="$show['deletedpcs']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewpcs&amp;type=deleted">$vbphrase[picture_comments]</a></td></tr></if>
+
+	</table>
+</div>
+<script type="text/javascript"> vbmenu_register("nav_deleteditems"); </script>
+</if>
+
+<if condition="$show['moderateditems']">
+<div class="vbmenu_popup" id="nav_moderateditems_menu" style="display:none">
+	<table cellpadding="4" cellspacing="1" border="0">
+
+		<tr><td class="thead" nowrap="nowrap">$vbphrase[moderated_items]</td></tr>
+		<if condition="$show['moderatedposts']">
+		<tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewthreads&amp;type=moderated">$vbphrase[threads]</a></td></tr>
+		<tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewposts&amp;type=moderated">$vbphrase[posts]</a></td></tr>
+		</if>
+		<if condition="$show['moderatedvms']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewvms&amp;type=moderated">$vbphrase[visitor_messages]</a></td></tr></if>
+		<if condition="$show['moderatedgms']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewgms&amp;type=moderated">$vbphrase[group_messages]</a></td></tr></if>
+		<if condition="$show['moderateddiscussions']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewdiscussions&amp;type=moderated">$vbphrase[group_discussions]</a></td></tr></if>
+		<if condition="$show['moderatedpcs']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewpcs&amp;type=moderated">$vbphrase[picture_comments]</a></td></tr></if>
+		<if condition="$show['moderatedpics']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewpics">$vbphrase[album_pictures]</a></td></tr></if>
+
+	</table>
+</div>
+<script type="text/javascript"> vbmenu_register("nav_moderateditems"); </script>
+</if>
+
+<if condition="$show['newitems']">
+<div class="vbmenu_popup" id="nav_newitems_menu" style="display:none">
+	<table cellpadding="4" cellspacing="1" border="0">
+
+		<tr><td class="thead" nowrap="nowrap">$vbphrase[new_items]</td></tr>
+		<if condition="$show['newvms']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewvms&amp;type=new">$vbphrase[visitor_messages]</a></td></tr></if>
+		<if condition="$show['newgms']"><tr><td class="vbmenu_option"><a  href="moderation.php?$session[sessionurl]do=viewgms&amp;type=new">$vbphrase[group_messages]</a></td></tr></if>
+		<if condition="$show['newdiscussions']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewdiscussions&amp;type=new">$vbphrase[group_discussions]</a></td></tr></if>
+		<if condition="$show['newpcs']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewpcs&amp;type=new">$vbphrase[picture_comments]</a></td></tr></if>
+		<if condition="$show['newpics']"><tr><td class="vbmenu_option"><a href="moderation.php?$session[sessionurl]do=viewpics&amp;type=new">$vbphrase[album_pictures]</a></td></tr></if>
+
+	</table>
+</div>
+<script type="text/javascript"> vbmenu_register("nav_newitems"); </script>
+</if>
+
+<script type="text/javascript">
+<!--
+	fetch_object('nav_moderation_popups').style.display = '';
+	fetch_object('nav_moderation').style.display = 'none';
+-->
+</script>
+<!-- / moderation popups -->
+</if>
+	
+</td>
+<td>&nbsp;&nbsp;</td>
+<td width="100%">
+
+<!-- main page contents -->
+$HTML
+<!-- / main page contents -->
+
+</td>
+</tr>
+</table>
+<!-- / table to support left column nav -->
+$footer
+</body>
+</html>]]></template>
+		<template name="ssgti_stocktrader_table" templatetype="template" date="1259017316" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<table class="tborder" cellpadding="$stylevar[cellpadding]" cellspacing="$stylevar[cellspacing]" border="0" width="100%" align="center">
+<thead>
+	<tr>
+		<td class="tcat" colspan="$colspan">
+			<a style="float:$stylevar[right]" href="#top" onclick="return toggle_collapse('ssgti_stocktrader')"><img id="collapseimg_ssgti_stocktrader" src="$stylevar[imgdir_button]/collapse_thead$vbcollapse[collapseimg_ssgti_stocktrader].gif" alt="" border="0" /></a>
+			Strock Trader
+		</td>
+	</tr>
+</thead>
+<tbody id="collapseobj_ssgti_stocktrader" style="$vbcollapse[collapseobj_ssgti_stocktrader]">
+	<tr>
+		<td class="thead" align="center">
+			Stock
+		</td>
+		$headbits
+	</tr>
+	$rowbits
+</tbody>
+</table>
+]]></template>
+		<template name="ssgti_stocktrader_usercp_nav" templatetype="template" date="1259045508" username="SolidSnake@GTI" version="3.8.100"><![CDATA[$vbphrase[edit_options]</a></td></tr><tr><td class="$navclass[ssgti_stocktrader]" nowrap="nowrap"><a class="smallfont" href="profile.php?$session[sessionurl]do=$vboptions[ssgti_stocktrader_variable]">$vbphrase[ssgti_stocktrader_edit_options]]]></template>
+	</templates>
+	<plugins>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Special Tags & Nav Blocks ]]]></title>
+			<hookname>admin_options_print</hookname>
+			<phpcode><![CDATA[// #########################
+			if ($setting['optioncode'] == 'ssgti_stocktrader_stags1')
+			{
+				$handled = TRUE;
+				$setting['bitfield'] =& fetch_bitfield_definitions('nocache|ssgti_stocktrader_stags1');
+				$setting['value'] = intval($setting['value']);
+				$setting['html'] = '';
+
+				if ($setting['bitfield'] === NULL)
+				{
+					print_label_row($description, construct_phrase("<strong>$vbphrase[settings_bitfield_error]</strong>", implode(',', vB_Bitfield_Builder::fetch_errors())), '', 'top', $name, 40);
+				}
+				else
+				{
+					#$setting['html'] .= "<fieldset><legend>$vbphrase[yes] / $vbphrase[no]</legend>";
+					$setting['html'] .= "<div id=\"ctrl_setting[$setting[varname]]\" class=\"smallfont\">\r\n";
+					$setting['html'] .= "<input type=\"hidden\" name=\"setting[$setting[varname]][0]\" value=\"0\" />\r\n";
+					foreach ($setting['bitfield'] AS $key => $value)
+					{
+						$value = intval($value);
+						$setting['html'] .= "<table style=\"width:220px; float:$stylevar[left]\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr valign=\"top\">
+						<td><input type=\"checkbox\" name=\"setting[$setting[varname]][$value]\" id=\"setting[$setting[varname]]_$key\" value=\"$value\"" . (($setting['value'] & $value) ? ' checked="checked"' : '') . " /></td>
+						<td width=\"100%\" style=\"padding-top:4px\"><label for=\"setting[$setting[varname]]_$key\" class=\"smallfont\">" . fetch_phrase_from_key('ssgti_stocktrader_stags_' . $key) . "</label></td>\r\n</tr></table>\r\n";
+					}
+
+					$setting['html'] .= "</div>\r\n";
+					#$setting['html'] .= "</fieldset>";
+					print_label_row($description, $setting['html'], '', 'top', $name, 40);
+				}
+			}
+			else if ($setting['optioncode'] == 'ssgti_stocktrader_stags2')
+			{
+				$handled = TRUE;
+				$setting['bitfield'] =& fetch_bitfield_definitions('nocache|ssgti_stocktrader_stags2');
+				$setting['value'] = intval($setting['value']);
+				$setting['html'] = '';
+
+				if ($setting['bitfield'] === NULL)
+				{
+					print_label_row($description, construct_phrase("<strong>$vbphrase[settings_bitfield_error]</strong>", implode(',', vB_Bitfield_Builder::fetch_errors())), '', 'top', $name, 40);
+				}
+				else
+				{
+					#$setting['html'] .= "<fieldset><legend>$vbphrase[yes] / $vbphrase[no]</legend>";
+					$setting['html'] .= "<div id=\"ctrl_setting[$setting[varname]]\" class=\"smallfont\">\r\n";
+					$setting['html'] .= "<input type=\"hidden\" name=\"setting[$setting[varname]][0]\" value=\"0\" />\r\n";
+					foreach ($setting['bitfield'] AS $key => $value)
+					{
+						$value = intval($value);
+						$setting['html'] .= "<table style=\"width:220px; float:$stylevar[left]\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr valign=\"top\">
+						<td><input type=\"checkbox\" name=\"setting[$setting[varname]][$value]\" id=\"setting[$setting[varname]]_$key\" value=\"$value\"" . (($setting['value'] & $value) ? ' checked="checked"' : '') . " /></td>
+						<td width=\"100%\" style=\"padding-top:4px\"><label for=\"setting[$setting[varname]]_$key\" class=\"smallfont\">" . fetch_phrase_from_key('ssgti_stocktrader_stags_' . $key) . "</label></td>\r\n</tr></table>\r\n";
+					}
+
+					$setting['html'] .= "</div>\r\n";
+					#$setting['html'] .= "</fieldset>";
+					print_label_row($description, $setting['html'], '', 'top', $name, 40);
+				}
+			}
+			else if ($setting['optioncode'] == 'ssgti_stocktrader_stags3')
+			{
+				$handled = TRUE;
+				$setting['bitfield'] =& fetch_bitfield_definitions('nocache|ssgti_stocktrader_stags3');
+				$setting['value'] = intval($setting['value']);
+				$setting['html'] = '';
+
+				if ($setting['bitfield'] === NULL)
+				{
+					print_label_row($description, construct_phrase("<strong>$vbphrase[settings_bitfield_error]</strong>", implode(',', vB_Bitfield_Builder::fetch_errors())), '', 'top', $name, 40);
+				}
+				else
+				{
+					#$setting['html'] .= "<fieldset><legend>$vbphrase[yes] / $vbphrase[no]</legend>";
+					$setting['html'] .= "<div id=\"ctrl_setting[$setting[varname]]\" class=\"smallfont\">\r\n";
+					$setting['html'] .= "<input type=\"hidden\" name=\"setting[$setting[varname]][0]\" value=\"0\" />\r\n";
+					foreach ($setting['bitfield'] AS $key => $value)
+					{
+						$value = intval($value);
+						$setting['html'] .= "<table style=\"width:220px; float:$stylevar[left]\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr valign=\"top\">
+						<td><input type=\"checkbox\" name=\"setting[$setting[varname]][$value]\" id=\"setting[$setting[varname]]_$key\" value=\"$value\"" . (($setting['value'] & $value) ? ' checked="checked"' : '') . " /></td>
+						<td width=\"100%\" style=\"padding-top:4px\"><label for=\"setting[$setting[varname]]_$key\" class=\"smallfont\">" . fetch_phrase_from_key('ssgti_stocktrader_stags_' . $key) . "</label></td>\r\n</tr></table>\r\n";
+					}
+
+					$setting['html'] .= "</div>\r\n";
+					#$setting['html'] .= "</fieldset>";
+					print_label_row($description, $setting['html'], '', 'top', $name, 40);
+				}
+			}
+			else if ($setting['optioncode'] == 'ssgti_stocktrader_navblocks')
+			{
+				$handled = TRUE;
+				$setting['bitfield'] =& fetch_bitfield_definitions('nocache|ssgti_stocktrader_navblocks');
+				$setting['value'] = intval($setting['value']);
+				$setting['html'] = '';
+
+				if ($setting['bitfield'] === NULL)
+				{
+					print_label_row($description, construct_phrase("<strong>$vbphrase[settings_bitfield_error]</strong>", implode(',', vB_Bitfield_Builder::fetch_errors())), '', 'top', $name, 40);
+				}
+				else
+				{
+					#$setting['html'] .= "<fieldset><legend>$vbphrase[yes] / $vbphrase[no]</legend>";
+					$setting['html'] .= "<div id=\"ctrl_setting[$setting[varname]]\" class=\"smallfont\">\r\n";
+					$setting['html'] .= "<input type=\"hidden\" name=\"setting[$setting[varname]][0]\" value=\"0\" />\r\n";
+					foreach ($setting['bitfield'] AS $key => $value)
+					{
+						$value = intval($value);
+						$setting['html'] .= "<table style=\"width:220px; float:$stylevar[left]\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr valign=\"top\">
+						<td><input type=\"checkbox\" name=\"setting[$setting[varname]][$value]\" id=\"setting[$setting[varname]]_$key\" value=\"$value\"" . (($setting['value'] & $value) ? ' checked="checked"' : '') . " /></td>
+						<td width=\"100%\" style=\"padding-top:4px\"><label for=\"setting[$setting[varname]]_$key\" class=\"smallfont\">" . fetch_phrase_from_key('ssgti_stocktrader_navblocks_' . $key) . "</label></td>\r\n</tr></table>\r\n";
+					}
+
+					$setting['html'] .= "</div>\r\n";
+					#$setting['html'] .= "</fieldset>";
+					print_label_row($description, $setting['html'], '', 'top', $name, 40);
+				}
+			}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Check & Corect Money DB Field ]]]></title>
+			<hookname>admin_options_processing</hookname>
+			<phpcode><![CDATA[if ($oldsetting['varname'] == 'ssgti_stocktrader_money')
+{
+	$ssgti_stocktrader_money_found = FALSE;
+	$ssgti_stocktrader_money = $vbulletin->db->query_write("SHOW FULL COLUMNS FROM " . TABLE_PREFIX . "user");
+
+	if ($ssgti_stocktrader_money)
+	{
+		while($ssgti_stocktrader_mny = $vbulletin->db->fetch_array($ssgti_stocktrader_money))
+		{
+			if ($settings["$oldsetting[varname]"] == $ssgti_stocktrader_mny['Field'])
+			{
+				$ssgti_stocktrader_money_found = TRUE;
+			}
+		}
+
+		if (!$ssgti_stocktrader_money_found)
+		{
+			$settings["$oldsetting[varname]"] = 'reputation';
+		}
+
+		$vbulletin->db->free_result($ssgti_stocktrader_money);
+	}
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Usergroup Default Permissions ]]]></title>
+			<hookname>admin_usergroup_edit</hookname>
+			<phpcode><![CDATA[// ############
+	if ($_REQUEST['do'] == 'add')
+	{
+		if (empty($vbulletin->GPC['defaultgroupid']))
+		{
+			$ug_bitfield = array_merge($ug_bitfield, array('ssgti_stocktrader_perms' => array('canview' => 1, 'stoplossorder' => 1, 'canviewselfhistory' => 1, 'canclearselfhistory' => 1, 'toplistincluded' => 1)));
+			$usergroup = array_merge($usergroup, array('ssgtistocktrader_exrate' => 1, 'ssgtistocktrader_compp' => 2, 'ssgtistocktrader_compfr' => 10, 'ssgtistocktrader_comsp' => 2, 'ssgtistocktrader_comsfr' => 10, 'ssgtistocktrader_maxshr' => 6));
+		}
+	}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Cache Templates ]]]></title>
+			<hookname>cache_templates</hookname>
+			<phpcode><![CDATA[if ($vbulletin->options['ssgti_stocktrader_active'] AND !in_array($vbulletin->userinfo['userid'], explode(',', $vbulletin->options['ssgti_stocktrader_exclude_users'])) AND ($vbulletin->userinfo['permissions']['ssgti_stocktrader_perms'] & $vbulletin->bf_ugp_ssgti_stocktrader_perms['canview']))
+{
+	$globaltemplates[] = 'ssgti_stocktrader_navbar';
+	$globaltemplates[] = 'ssgti_stocktrader_quicklinks';
+	$globaltemplates[] = 'ssgti_stocktrader_usercp_nav';
+
+	switch(THIS_SCRIPT)
+	{
+		case 'profile':
+			$globaltemplates[] = 'ssgti_stocktrader_modifyoptions';
+			$globaltemplates[] = 'ssgti_stocktrader_modifyprivacy_bit';
+			break;
+	}
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Navbar & Usercp Links ]]]></title>
+			<hookname>global_setup_complete</hookname>
+			<phpcode><![CDATA[if ($vbulletin->options['ssgti_stocktrader_active'] AND !in_array($vbulletin->userinfo['userid'], explode(',', $vbulletin->options['ssgti_stocktrader_exclude_users'])) AND ($vbulletin->userinfo['permissions']['ssgti_stocktrader_perms'] & $vbulletin->bf_ugp_ssgti_stocktrader_perms['canview']))
+{
+	$vbulletin->templatecache['USERCP_SHELL'] = str_replace('$vbphrase[edit_options]', fetch_template('ssgti_stocktrader_usercp_nav'), $vbulletin->templatecache['USERCP_SHELL']);
+
+	if ($vbulletin->userinfo['ssgti_stocktrader_active'])
+	{
+		switch ($vbulletin->options['ssgti_stocktrader_linkpos_navbar'])
+		{
+			case 1:
+				eval('$template_hook[\'navbar_buttons_right\'] .= "' . fetch_template('ssgti_stocktrader_navbar') . '";');
+				break;
+			case 2:
+				eval('$template_hook[\'navbar_buttons_left\'] .= "' . fetch_template('ssgti_stocktrader_navbar') . '";');
+				break;
+		}
+	
+		switch ($vbulletin->options['ssgti_stocktrader_linkpos_quicklinks'])
+		{
+			case 1:
+				eval('$template_hook[\'navbar_quick_links_menu_pos1\'] .= "' . fetch_template('ssgti_stocktrader_quicklinks') . '";');
+				break;
+			case 2:
+				eval('$template_hook[\'navbar_quick_links_menu_pos4\'] .= "' . fetch_template('ssgti_stocktrader_quicklinks') . '";');
+				break;
+		}
+	}
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Add Tab to standard MEMBERINFO display ]]]></title>
+			<hookname>member_build_blocks_start</hookname>
+			<phpcode><![CDATA[require_once(DIR . '/includes/class_profileblock_ssgti_stocktrader.php');
+$blocklist['ssgti_stocktrader'] = array(
+	'class' => 'SSGTI_StockTrader',
+	'title' => $vbulletin->options['ssgti_stocktrader_title'],
+);]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Add Tab Link to standard MEMBERINFO display ]]]></title>
+			<hookname>member_complete</hookname>
+			<phpcode><![CDATA[eval('$template_hook[\'profile_left_last\'] .= $blocks[\'ssgti_stocktrader\'];');]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Online Location #2 ]]]></title>
+			<hookname>online_location_process</hookname>
+			<phpcode><![CDATA[if ($filename == $vbulletin->options['ssgti_stocktrader_filename'] . '.php')
+{
+	$userinfo['activity'] = 'ssgti_stocktrader';
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Online Location #1 ]]]></title>
+			<hookname>online_location_unknown</hookname>
+			<phpcode><![CDATA[if ($userinfo['activity'] == 'ssgti_stocktrader')
+{
+	$handled = TRUE;
+	$userinfo['action'] = $vbulletin->options['ssgti_stocktrader_title'];
+	$userinfo['where'] = '<a href="' . $vbulletin->options['ssgti_stocktrader_filename'] . '.php' . $vbulletin->session->vars['sessionurl_q'] . '">' . $vbulletin->options['ssgti_stocktrader_title'] . '</a>';
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ User Privacy Options ]]]></title>
+			<hookname>profile_complete</hookname>
+			<phpcode><![CDATA[if ($_REQUEST['do'] == 'privacy')
+{
+	if ($vbulletin->options['ssgti_stocktrader_active'] AND !in_array($vbulletin->userinfo['userid'], explode(',', $vbulletin->options['ssgti_stocktrader_exclude_users'])) AND ($vbulletin->userinfo['permissions']['ssgti_stocktrader_perms'] & $vbulletin->bf_ugp_ssgti_stocktrader_perms['canview']))
+	{
+		// Get current privacy settings
+		if (!isset($_POST['do']))
+		{
+			$ssgti_stocktrader_result = $vbulletin->db->query_first_slave("
+				SELECT blockid, requirement
+				FROM " . TABLE_PREFIX . "profileblockprivacy
+				WHERE userid = " . intval($vbulletin->userinfo['userid']) . "
+					AND blockid = 'ssgti_stocktrader'
+			");
+		}
+		else
+		{
+			if (isset($vbulletin->GPC['blockprivacy']['ssgti_stocktrader']))
+			{
+				$vbulletin->db->query_write($sql = "
+					REPLACE INTO " . TABLE_PREFIX . "profileblockprivacy
+						(userid, blockid, requirement)
+					VALUES (" . $vbulletin->userinfo['userid'] . ", 'ssgti_stocktrader', " . $vbulletin->GPC['blockprivacy']['ssgti_stocktrader'] . ")
+				");
+			}
+
+			$ssgti_stocktrader_result['requirement'] = $vbulletin->GPC['blockprivacy']['ssgti_stocktrader'];
+		}
+
+		$ssgti_stocktrader_selected = array((isset($ssgti_stocktrader_result['requirement']) ? $ssgti_stocktrader_result['requirement'] : 0) => 'selected="selected"');
+		eval('$profileprivacybits .= "' . fetch_template('ssgti_stocktrader_modifyprivacy_bit') . '";');
+	}
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ EDIT Stock Trader OPTIONS ]]]></title>
+			<hookname>profile_start</hookname>
+			<phpcode><![CDATA[// ############################################################################
+// ######################## EDIT Stock Trader OPTIONS #########################
+// ############################################################################
+if ($_REQUEST['do'] == $vbulletin->options['ssgti_stocktrader_variable'])
+{
+	if ($vbulletin->options['ssgti_stocktrader_active'] AND !in_array($vbulletin->userinfo['userid'], explode(',', $vbulletin->options['ssgti_stocktrader_exclude_users'])) AND ($vbulletin->userinfo['permissions']['ssgti_stocktrader_perms'] & $vbulletin->bf_ugp_ssgti_stocktrader_perms['canview']))
+	{
+		// check the appropriate checkboxes
+		$checked = array();
+		foreach ($vbulletin->userinfo AS $key => $val)
+		{
+			if ($val != 0)
+			{
+				$checked["$key"] = 'checked="checked"';
+			}
+			else
+			{
+				$checked["$key"] = '';
+			}
+		}
+
+		// draw cp nav bar
+		construct_usercp_nav('ssgti_stocktrader');
+
+		$navbits[''] = $vbphrase['ssgti_stocktrader_edit_options'];
+		$templatename = 'ssgti_stocktrader_modifyoptions';
+	}
+	else
+	{
+		print_no_permission();
+	}
+}
+
+
+// ####################### start update Stock Trader options ########################
+if ($_POST['do'] == 'update' . $vbulletin->options['ssgti_stocktrader_variable'])
+{
+	if ($vbulletin->options['ssgti_stocktrader_active'] AND !in_array($vbulletin->userinfo['userid'], explode(',', $vbulletin->options['ssgti_stocktrader_exclude_users'])) AND ($vbulletin->userinfo['permissions']['ssgti_stocktrader_perms'] & $vbulletin->bf_ugp_ssgti_stocktrader_perms['canview']))
+	{
+		$vbulletin->input->clean_array_gpc('p', array(
+			'options'        => TYPE_ARRAY_BOOL,
+			'set_options'    => TYPE_ARRAY_BOOL
+		));
+
+		$userdata =& datamanager_init('User', $vbulletin, ERRTYPE_STANDARD);
+		$userdata->set_existing($vbulletin->userinfo);
+
+		if (isset($vbulletin->GPC['options']['ssgti_stocktrader_active']) OR isset($vbulletin->GPC['set_options']['ssgti_stocktrader_active']))
+		{
+			$userdata->set('ssgti_stocktrader_active', $vbulletin->GPC['options']['ssgti_stocktrader_active']);
+		}
+
+		$userdata->save();
+
+		$vbulletin->url = $vbulletin->options['ssgti_stocktrader_filename'] . '.php' . $vbulletin->session->vars['sessionurl_q'];
+		eval(print_standard_redirect('redirect_updatethanks'));
+	}
+	else
+	{
+		print_no_permission();
+	}
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Group Template ]]]></title>
+			<hookname>template_groups</hookname>
+			<phpcode><![CDATA[$only['ssgti_stocktrader'] = $vbphrase['ssgti_stocktrader'];]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ Usercp Nav CSS ]]]></title>
+			<hookname>usercp_nav_start</hookname>
+			<phpcode><![CDATA[if ($vbulletin->options['ssgti_stocktrader_active'] AND !in_array($vbulletin->userinfo['userid'], explode(',', $vbulletin->options['ssgti_stocktrader_exclude_users'])) AND ($vbulletin->userinfo['permissions']['ssgti_stocktrader_perms'] & $vbulletin->bf_ugp_ssgti_stocktrader_perms['canview']) AND $vbulletin->userinfo['ssgti_stocktrader_active'])
+{
+	$cells[] = 'ssgti_stocktrader';
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title><![CDATA[SSGTI - Stock Trader - [ User Data: Verify Fields ]]]></title>
+			<hookname>userdata_start</hookname>
+			<phpcode><![CDATA[if ($this->registry->options['ssgti_stocktrader_active'] AND !in_array($this->registry->userinfo['userid'], explode(',', $this->registry->options['ssgti_stocktrader_exclude_users'])) AND ($this->registry->userinfo['permissions']['ssgti_stocktrader_perms'] & $this->registry->bf_ugp_ssgti_stocktrader_perms['canview']) AND $this->registry->userinfo['ssgti_stocktrader_active'])
+{
+	$this->validfields['ssgti_cgwm_active']  = array(TYPE_UINT, REQ_NO);
+}]]></phpcode>
+		</plugin>
+	</plugins>
+	<phrases>
+		<phrasetype name="Control Panel Options" fieldname="cpoption">
+			<phrase name="ssgti_stocktrader_linkpos_navbar_left" date="1259043430" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Display Left Navbar]]></phrase>
+			<phrase name="ssgti_stocktrader_linkpos_navbar_manual" date="1259043407" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Manual Display]]></phrase>
+			<phrase name="ssgti_stocktrader_linkpos_navbar_right" date="1259043424" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Display Right Navbar]]></phrase>
+			<phrase name="ssgti_stocktrader_linkpos_quicklinks_down" date="1259043554" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Display Down Quick Links Menu]]></phrase>
+			<phrase name="ssgti_stocktrader_linkpos_quicklinks_manual" date="1259043531" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Manual Display]]></phrase>
+			<phrase name="ssgti_stocktrader_linkpos_quicklinks_up" date="1259043546" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Display Up Quick Links Menu]]></phrase>
+			<phrase name="ssgti_stocktrader_navblocks_profile" date="1259974836" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Profile]]></phrase>
+			<phrase name="ssgti_stocktrader_navblocks_rules" date="1259974749" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Rules]]></phrase>
+			<phrase name="ssgti_stocktrader_navblocks_stats" date="1259974834" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Stats]]></phrase>
+			<phrase name="ssgti_stocktrader_negativesaleaction_osc" date="1256211257" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Omit Sales Commissions]]></phrase>
+			<phrase name="ssgti_stocktrader_negativesaleaction_pso" date="1256211242" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Prevent Sales Order]]></phrase>
+		</phrasetype>
+		<phrasetype name="Permissions" fieldname="cppermission">
+			<phrase name="ssgti_stocktrader_allowedstocks" date="1258982438" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Allowed Stocks</strong><dfn>If you wish, you can set certain stocks to be allowed for trading & investments for this user group users. Please enter those allowed stocks' symbols separated by spaces.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_canobtaincustomname" date="1256155850" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Can Obtain Custom Trader Name</strong><dfn>Users using "Stock Trader" supposed to be "Traders", you may want to allow each trader to have his custom "Trader Name" or "Trading Mark". Do you want to allow them to do so?</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_canview" date="1256135097" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Can View Stock Trader</strong>
+<dfn>Can this user group users view & participate in the "Stock Trader" or not. This is a global switch control permission for this user group, if "yes" then they will be able to view & trade with stocks, otherwise they won't be able to do so.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_capitalgainstax" date="1256155646" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Capital Gains Tax</strong><dfn>When users sell stocks, a percentage (0-100) will be levied on profits as "Capital Gains Tax". Specify that percentage here.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_commpurchflatrate" date="1255882592" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Purchase Flat Rate Commission</strong><dfn>Users will be charged a certain flat rate for each purchase they made as a commission. Setting this to '10' means that an additional value '10' will be added to user's invoice, setting it to '0' means that there is no flat rate commission of stocks purchases.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_commpurchpercent" date="1255882488" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Purchase Commission Percent</strong><dfn>Users will be charged a certain percentage of each purchase they made as a commission. Setting this to '2' means that an additional value of 2% of the total purchase value will be added to user's invoice, setting it to '0' means that there is no percentage commission of stocks purchases.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_commsellflatrate" date="1255882672" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Sales Flat Rate Commission</strong><dfn>Users will be charged a certain flat rate for each sale they made as a commission. Setting this to '10' means that an additional value '10' will be deducted from user's income, setting it to '0' means that there is no flat rate commission of stocks sales.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_commsellpercent" date="1255882617" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Sales Commission Percent</strong><dfn>Users will be charged a certain percentage of each sale they made as a commission. Setting this to '2' means that an additional value of 2% of the total sale value will be deducted from user's income, setting it to '0' means that there is no percentage commission of stocks sales.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_exchangerate" date="1255882709" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Exchange Rate</strong><dfn>Investments in stocks done in USD. This exchange rate determines how much your board's points are worth in USD. A value of '0.5' means that '1 point' in your board is worth '$0.5 USD', and a value of '2' means that '1 point' in your board is worth '$2 USD'.<br /><br />
+Note: Since your board's points can't be decimal in most cases, then after calculating the total value of investment, if the final value is fractional, it will be approximated to the nearest upper integer number (in case of buying stocks), and it will be approximated to the nearest lower integer number (in case of selling stocks).</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_instantinvestorder" date="1257548475" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Instant-Invest-Order</strong><dfn>When users have bought stocks and hold them in there deposit, they'll be able to paste a price to sell their stocks automatically when the stock price reaches that specific "barrier". (one order refers to one company, not for all at once)<br />
+The system will execute this process when the refreshed stock-prices are over the pasted barrier.<br /><br />
+Example: The user bought 150 CITIGROUP stocks at $5,00 and add a instant-invest-order (for CITIGROUP) by pasting $6,50. CITIGROUP stocks now indeed raises over this barrier. The system now refreshes a bit later and the price update is now at $6,70. The User's stocks now automatically get sold for this price, since it passed the barrier of $6,50. But if the stocks doesn't raise to reach that price barrier ($6,50), the order will not be executed. <strong>This is opposite to the "Stop-Lose-Order"</strong></dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_inv_time_required" date="1256154144" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Investment Time Requirement</strong><dfn>How long users should hold onto purchased stocks before selling (in days).</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_maxshares" date="1259973989" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Maximum Shares Per Stock</strong><dfn>Users are allowed to have X shares per stock (company) investment in the same time, you've the ability to limit that X limit from here.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_maxstocks" date="1256153457" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Maximum Investments</strong><dfn>Users are allowed to have investments in X various companies at the same time, you've the ability to limit that X limit from here.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_perms" date="1255882132" username="SolidSnake@GTI" version="3.8.100"><![CDATA[SSGTI - Stock Trader]]></phrase>
+			<phrase name="ssgti_stocktrader_socialparticipation" date="1259976087" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Social Participation</strong><dfn>Should users of this user group be included in the global top-list or not? Should their activity be seen within "Spy Eye" or not? Should they be included in any social or global activity or not?</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_spyeyeaccess" date="1259975891" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Spy Eye Access</strong><dfn>Check "Yes" if you wish to allow users to have access to "Spy Eye". Spy Eye: is a logging system that displays all traders activity all over the forum.</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_stockexception" date="1259951440" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Excepted User Group</strong><dfn>If this permission is "Yes", then this user group's users will be excepted from the limits of the "Available Stocks". They will be able to invest in any stock that's already permitted as "Global Stocks" or "Specialized to their User Group" in addition to any other stock available via the source (Yahoo Finance Currently).</dfn>]]></phrase>
+			<phrase name="ssgti_stocktrader_stoplossorder" date="1256155267" username="SolidSnake@GTI" version="3.8.100"><![CDATA[<strong>Stop-Loss-Order</strong><dfn> When users have bought stocks and hold them in there deposit, they'll be able to paste a price to sell their stocks automatically when the stock price reaches that specific "barrier". (one order refers to one company, not for all at once)<br />
+The system will execute this process when the refreshed stock-prices are below the pasted barrier.<br /><br />
+Example: The user bought 150 CITIGROUP stocks at $5,00 and add a stop-loss-order (for CITIGROUP) by pasting $4,50. CITIGROUP stocks now indeed fall below this barrier. The system now refreshes a bit later and the price update is now at $4,20. The User's stocks now automatically get sold for this price, since it passed the barrier of $4,50. But if the stocks rise and don't fall down to the value the user has pasted ($4,50), the order will not be executed.</dfn>]]></phrase>
+		</phrasetype>
+		<phrasetype name="GLOBAL" fieldname="global">
+			<phrase name="ssgti_stocktrader_buy" date="1259016202" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Buy]]></phrase>
+			<phrase name="ssgti_stocktrader_sell" date="1259016207" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Sell]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_a" date="1256157045" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Ask]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_a2" date="1255874657" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Average Daily Volume]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_a5" date="1255874669" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Ask Size]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_b" date="1255874677" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Bid]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_b2" date="1255874689" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Ask (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_b3" date="1255874702" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Bid (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_b4" date="1255874715" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Book Value]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_b6" date="1255874727" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Bid Size]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_c" date="1255874742" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change & Percent Change]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_c1" date="1255874755" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_c3" date="1255874765" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Commission]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_c6" date="1255874779" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_c8" date="1255874793" username="SolidSnake@GTI" version="3.8.100"><![CDATA[After Hours Change (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_d" date="1255874803" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Dividend/Share]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_d1" date="1255874813" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Last Trade Date]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_d2" date="1255874827" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Trade Date]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_e" date="1255874840" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Earnings/Share]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_e1" date="1255874872" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Error Indication (returned for symbol changed / invalid)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_e7" date="1255874893" username="SolidSnake@GTI" version="3.8.100"><![CDATA[EPS Estimate Current Year]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_e8" date="1255874905" username="SolidSnake@GTI" version="3.8.100"><![CDATA[EPS Estimate Next Year]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_e9" date="1255874923" username="SolidSnake@GTI" version="3.8.100"><![CDATA[EPS Estimate Next Quarter]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_g" date="1255874946" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Day's Low]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_g1" date="1255874997" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Holdings Gain Percent]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_g3" date="1255875011" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Annualized Gain]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_g4" date="1255875022" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Holdings Gain]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_g5" date="1255875033" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Holdings Gain Percent (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_g6" date="1255875048" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Holdings Gain (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_h" date="1255874962" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Day's High]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_i" date="1255875063" username="SolidSnake@GTI" version="3.8.100"><![CDATA[More Info]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_i5" date="1255875071" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Order Book (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_j" date="1255874974" username="SolidSnake@GTI" version="3.8.100"><![CDATA[52-week Low]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_j1" date="1255875084" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Market Capitalization]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_j3" date="1255875094" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Market Cap (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_j4" date="1255875103" username="SolidSnake@GTI" version="3.8.100"><![CDATA[EBITDA]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_j5" date="1255875116" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change From 52-week Low]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_j6" date="1255875136" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Percent Change From 52-week Low]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_k" date="1255874986" username="SolidSnake@GTI" version="3.8.100"><![CDATA[52-week High]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_k1" date="1255875156" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Last Trade (Real-time) With Time]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_k2" date="1255875169" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change Percent (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_k3" date="1255875180" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Last Trade Size]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_k4" date="1255875193" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change From 52-week High]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_k5" date="1255875215" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Percent Change From 52-week High]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_l" date="1255875232" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Last Trade (With Time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_l1" date="1255875248" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Last Trade (Price Only)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_l2" date="1255875259" username="SolidSnake@GTI" version="3.8.100"><![CDATA[High Limit]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_l3" date="1255875270" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Low Limit]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m" date="1255875283" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Day's Range]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m2" date="1255875296" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Day's Range (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m3" date="1255875307" username="SolidSnake@GTI" version="3.8.100"><![CDATA[50-day Moving Average]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m4" date="1255875317" username="SolidSnake@GTI" version="3.8.100"><![CDATA[200-day Moving Average]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m5" date="1255875328" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change From 200-day Moving Average]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m6" date="1255875340" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Percent Change From 200-day Moving Average]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m7" date="1255875352" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change From 50-day Moving Average]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_m8" date="1255875364" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Percent Change From 50-day Moving Average]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_n" date="1255875373" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Name]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_n4" date="1255875382" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Notes]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_o" date="1255875390" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Open]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_p" date="1255875401" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Previous Close]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_p1" date="1255875411" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Price Paid]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_p2" date="1255875423" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Change in Percent]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_p5" date="1255875450" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Price/Sales]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_p6" date="1255875461" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Price/Book]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_q" date="1255875473" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Ex-Dividend Date]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_r" date="1255875484" username="SolidSnake@GTI" version="3.8.100"><![CDATA[P/E Ratio]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_r1" date="1255875494" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Dividend Pay Date]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_r2" date="1255875508" username="SolidSnake@GTI" version="3.8.100"><![CDATA[P/E Ratio (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_r5" date="1255875518" username="SolidSnake@GTI" version="3.8.100"><![CDATA[PEG Ratio]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_r6" date="1255875529" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Price/EPS Estimate Current Year]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_r7" date="1255875541" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Price/EPS Estimate Next Year]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_s" date="1259014569" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Symbol]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_s1" date="1255875560" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Shares Owned]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_s7" date="1255875571" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Short Ratio]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_t1" date="1255875583" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Last Trade Time]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_t6" date="1255875599" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Trade Links]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_t7" date="1255875610" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Ticker Trend]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_t8" date="1255875622" username="SolidSnake@GTI" version="3.8.100"><![CDATA[1 yr Target Price]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_v" date="1255875637" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Volume]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_v1" date="1255875646" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Holdings Value]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_v7" date="1255875657" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Holdings Value (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_w" date="1255875666" username="SolidSnake@GTI" version="3.8.100"><![CDATA[52-week Range]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_w1" date="1255875677" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Day's Value Change]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_w4" date="1255875688" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Day's Value Change (Real-time)]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_x" date="1255875700" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Stock Exchange]]></phrase>
+			<phrase name="ssgti_stocktrader_stags_y" date="1255875712" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Dividend Yield]]></phrase>
+		</phrasetype>
+		<phrasetype name="SSGTI - Stock Trader" fieldname="ssgti_stocktrader">
+			<phrase name="asdasdasd" date="1256211242" username="SolidSnake@GTI" version="3.8.100"><![CDATA[ASDASDASD]]></phrase>
+			<phrase name="ssgti_stocktrader_headnav_rules" date="1259971348" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Rules]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_home" date="1259951679" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Home]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_iio" date="1259953570" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Instant Invest Orders]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_invest" date="1259952201" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Investment]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_purchase_history" date="1259953515" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Purchase History]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_sales_history" date="1259953502" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Sales History]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_slo" date="1259953555" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Stop Loss Orders]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_socialgroups" date="1259953489" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Social Groups]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_spyeye" date="1259953465" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Spy Eye]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_statistics" date="1259970736" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Statistics]]></phrase>
+			<phrase name="ssgti_stocktrader_nav_toplist" date="1259953476" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Top List]]></phrase>
+			<phrase name="ssgti_stocktrader_navhead_nav" date="1259956920" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Navigation]]></phrase>
+			<phrase name="ssgti_stocktrader_navhead_profile" date="1259956926" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Profile]]></phrase>
+			<phrase name="ssgti_stocktrader_navhead_rules" date="1259971366" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Rules]]></phrase>
+			<phrase name="ssgti_stocktrader_navhead_stats" date="1259956923" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Stats]]></phrase>
+			<phrase name="ssgti_stocktrader_profile_gain" date="1259970943" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Gain: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_profile_level" date="1259956303" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Level: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_profile_points" date="1259957554" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Points: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_profile_stocks_shares" date="1259970799" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Stocks/Shares: {1}/{2}]]></phrase>
+			<phrase name="ssgti_stocktrader_profile_toalgain" date="1259957503" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Total Gain: {1} ({2} %)]]></phrase>
+			<phrase name="ssgti_stocktrader_profile_trader" date="1259956293" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Trader: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_cgt" date="1259973834" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Capital Gains Tax: {1}%]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_compfr" date="1259973704" username="SolidSnake@GTI" version="3.8.100"><![CDATA[PFRC: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_compp" date="1259974262" username="SolidSnake@GTI" version="3.8.100"><![CDATA[PCP: {1}%]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_comsfr" date="1259973757" username="SolidSnake@GTI" version="3.8.100"><![CDATA[SFRC: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_comsp" date="1259973557" username="SolidSnake@GTI" version="3.8.100"><![CDATA[SCP: {1}%]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_exrate" date="1259972616" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Exchange Rate: {1}:{2}]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_itr" date="1259974187" username="SolidSnake@GTI" version="3.8.100"><![CDATA[ITR: {1} days]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_maxshr" date="1259974212" username="SolidSnake@GTI" version="3.8.100"><![CDATA[MSPC: {1} per stock]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_maxstc" date="1259973861" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Maximum Investments: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_rules_stocks" date="1259974063" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Available Stocks: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_stats_points" date="1259971039" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Total Points: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_stats_stocks_shares" date="1259971057" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Stocks/Shares: {1}/{2}]]></phrase>
+			<phrase name="ssgti_stocktrader_stats_toalgain" date="1259971070" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Total Gain: {1}]]></phrase>
+			<phrase name="ssgti_stocktrader_stats_toptrader" date="1259971186" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Top Trader: {1} (<span title="Level">{2}</span>/<span title="Points">{3}</span>)]]></phrase>
+			<phrase name="ssgti_stocktrader_stats_traders" date="1259970973" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Total Traders: {1}]]></phrase>
+		</phrasetype>
+		<phrasetype name="Style Tools" fieldname="style">
+			<phrase name="ssgti_stocktrader" date="1259042766" username="SolidSnake@GTI" version="3.8.100"><![CDATA[SSGTI - Stock Trader]]></phrase>
+		</phrasetype>
+		<phrasetype name="User Tools (global)" fieldname="user">
+			<phrase name="ssgti_stocktrader_edit_options" date="1259045494" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Stock Trader Options]]></phrase>
+		</phrasetype>
+		<phrasetype name="vBulletin Settings" fieldname="vbsettings">
+			<phrase name="setting_ssgti_stocktrader_active_desc" date="1255513683" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Choose whether the product "SSGTI - Stock Trader" is active or not.]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_active_title" date="1255513683" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Product Active]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_cache_expire_desc" date="1259044056" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Cached data for used stocks becomes old/useless as the market move, so you've to update your cached data regularly. How many minutes do you wish to mark your cached data as valid for use? (After that period, data will be re-cached)<br />
+<strong>Note: "0" means real time values, that means the system will run caching process as soon as it's possible even it's multiple times per second. <span style="color: #FF0000">NOT RECOMMENDED</span></strong>]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_cache_expire_title" date="1259044056" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Cache Validity]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_closedreason_desc" date="1256156935" username="SolidSnake@GTI" version="3.8.100"><![CDATA[The text that is presented when the Stock Trader is closed.<br />
+<br />
+Note: as an administrator, you will be able to see the Stock Trader as usual, even when you have turned it off to the public.]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_closedreason_title" date="1256156935" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Reason For Turning Stock Trader Off]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_exclude_users_desc" date="1259043355" username="SolidSnake@GTI" version="3.8.100"><![CDATA[You can specify certain users to be excluded from using the "Stock Trader" regardless of their user group. If you wish to do so, then please enter those users' IDs here in this setting (separate multiple IDs by comma ',').]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_exclude_users_title" date="1259043355" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Exclude Users]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_filename_desc" date="1258282558" username="SolidSnake@GTI" version="3.8.100"><![CDATA[You can change the default file name of the "Stock Trader" to whatever you wish. Please note that you've to change it's name here in this setting & also change it physically through FTP or hosting control panel. <strong>Note:</strong> Just enter the file name without any extension.]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_filename_title" date="1258282558" username="SolidSnake@GTI" version="3.8.100"><![CDATA[File Name]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_linkpos_navbar_desc" date="1259043505" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Where do you need to display link for the "Stock Trader" in the navigation bar within forums? You've multiple automatic options & you've the ability to do it manually. If you need it auto, then choose your preferred position from these options.]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_linkpos_navbar_title" date="1259043505" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Navigation Bar Link Position]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_linkpos_quicklinks_desc" date="1259043602" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Where do you need to display link for the "Stock Trader" in the "Quick Links" Menu within forums? You've multiple automatic options & you've the ability to do it manually. If you need it auto, then choose your preferred position from these options.]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_linkpos_quicklinks_title" date="1259043602" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Quick Links Link Position]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_money_desc" date="1255513913" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Which money field in your database that you wish to use in this system, you've to use a valid money/points field that already exists in your users table. <strong>(Default: 'reputation')</strong>]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_money_title" date="1255513913" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Money Field]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_navblocks_desc" date="1259974588" username="SolidSnake@GTI" version="3.8.100"><![CDATA[You've the ability to choose which navigation blocks should appear in the navigation side bar, please check needed blocks.]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_navblocks_title" date="1259974588" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Navigation Blocks]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_negativesaleaction_desc" date="1256211281" username="SolidSnake@GTI" version="3.8.100"><![CDATA[If you don't Omit "Losing Sales Commissions", some losing sales cases may becomes negative. How to act with such cases!?]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_negativesaleaction_title" date="1256211281" username="SolidSnake@GTI" version="3.8.100"><![CDATA[On Negative Sale Action: What to do!?]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_omitlosscommission_desc" date="1256210846" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Some stocks may fall down to low value levels, so users may loss there investments. If so, what to do with the "Sales Commissions", do you want to omit commissions on losing sales?]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_omitlosscommission_title" date="1256210846" username="SolidSnake@GTI" version="3.8.100"><![CDATA[On Losing Sales: Omit Sales Commissions]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_stags1_desc" date="1258985676" username="SolidSnake@GTI" version="3.8.100" />
+			<phrase name="setting_ssgti_stocktrader_stags1_title" date="1258985676" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Yahoo Finance Special Tags #1]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_stags2_desc" date="1258985677" username="SolidSnake@GTI" version="3.8.100" />
+			<phrase name="setting_ssgti_stocktrader_stags2_title" date="1258985677" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Yahoo Finance Special Tags #2]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_stags3_desc" date="1258985697" username="SolidSnake@GTI" version="3.8.100" />
+			<phrase name="setting_ssgti_stocktrader_stags3_title" date="1258985697" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Yahoo Finance Special Tags #3]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_stocks_desc" date="1255937827" username="SolidSnake@GTI" version="3.8.100"><![CDATA[You can specify which stocks to be available & allowed for users to trade & invest in. This is a global setting that if leaved empty, it means that all stocks are allowed; If it has specific values, then it means it's limited to those specified stocks defined here. Note: This setting can be overridden by specific user groups permissions; If there's specific user group value for the "Allowed Stocks" then this setting has no effect on those user groups. Please enter allowed stock symbols separated by spaces.]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_stocks_title" date="1255937827" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Global Available Stock Symbols]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_title_desc" date="1256156944" username="SolidSnake@GTI" version="3.8.100"><![CDATA[You may wish to change the stock trader's title to something else, here it is your ability to do so :).]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_title_title" date="1256156944" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Trader's Title]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_variable_desc" date="1259062310" username="SolidSnake@GTI" version="3.8.100"><![CDATA[This page variable setting isn't recommended to be changed in most cases, it's just for exceptional cases. By the way, it's only for determining URL format in some places within forums such as "Editing Stock Trader Options" in the User Control Panel (EX: "profile.php?do=<span style="color: #0000FF">stocktrader</span>").<br />
+<strong><span style="color: #FF0000">Note: this value should be SHORT/LOWERCASE/ALPHABETICAL WITHOUT ANY SPACES OR SPECIAL CHARACTERS.</span></strong>]]></phrase>
+			<phrase name="setting_ssgti_stocktrader_variable_title" date="1259062310" username="SolidSnake@GTI" version="3.8.100"><![CDATA[Page Variable]]></phrase>
+			<phrase name="settinggroup_ssgti_stocktrader" date="1255513610" username="SolidSnake@GTI" version="3.8.100"><![CDATA[SSGTI - Stock Trader]]></phrase>
+		</phrasetype>
+	</phrases>
+	<options>
+		<settinggroup name="ssgti_stocktrader" displayorder="600">
+			<setting varname="ssgti_stocktrader_active" displayorder="10">
+				<datatype>boolean</datatype>
+				<optioncode>yesno</optioncode>
+				<defaultvalue>1</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_money" displayorder="20">
+				<datatype>free</datatype>
+				<defaultvalue>reputation</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_stocks" displayorder="30">
+				<datatype>free</datatype>
+				<optioncode>textarea</optioncode>
+			</setting>
+			<setting varname="ssgti_stocktrader_stags1" displayorder="40">
+				<datatype>bitfield</datatype>
+				<optioncode>ssgti_stocktrader_stags1</optioncode>
+				<defaultvalue>268435455</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_stags2" displayorder="50">
+				<datatype>bitfield</datatype>
+				<optioncode>ssgti_stocktrader_stags2</optioncode>
+				<defaultvalue>268435455</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_stags3" displayorder="60">
+				<datatype>bitfield</datatype>
+				<optioncode>ssgti_stocktrader_stags3</optioncode>
+				<defaultvalue>268435455</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_filename" displayorder="70">
+				<datatype>free</datatype>
+				<defaultvalue>ssgti_stocktrader</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_title" displayorder="80">
+				<datatype>free</datatype>
+				<defaultvalue>Stock Trader</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_variable" displayorder="82">
+				<datatype>free</datatype>
+				<defaultvalue>stocktrader</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_closedreason" displayorder="90">
+				<datatype>free</datatype>
+				<optioncode>textarea</optioncode>
+				<defaultvalue><![CDATA[<p>Sorry, the stock trader is unavailable at the moment while we are testing some functionality.</p>
+<p>We will be back soon...</p>]]></defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_omitlosscommission" displayorder="100">
+				<datatype>boolean</datatype>
+				<optioncode>yesno</optioncode>
+				<defaultvalue>1</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_negativesaleaction" displayorder="110">
+				<datatype>integer</datatype>
+				<optioncode>radio:piped
+0|ssgti_stocktrader_negativesaleaction_pso
+1|ssgti_stocktrader_negativesaleaction_osc</optioncode>
+				<defaultvalue>1</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_exclude_users" displayorder="120">
+				<datatype>free</datatype>
+			</setting>
+			<setting varname="ssgti_stocktrader_linkpos_navbar" displayorder="130">
+				<datatype>integer</datatype>
+				<optioncode>radio:piped
+0|ssgti_stocktrader_linkpos_navbar_manual
+1|ssgti_stocktrader_linkpos_navbar_right
+2|ssgti_stocktrader_linkpos_navbar_left</optioncode>
+				<defaultvalue>1</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_linkpos_quicklinks" displayorder="140">
+				<datatype>integer</datatype>
+				<optioncode>radio:piped
+0|ssgti_stocktrader_linkpos_quicklinks_manual
+1|ssgti_stocktrader_linkpos_quicklinks_up
+2|ssgti_stocktrader_linkpos_quicklinks_down</optioncode>
+				<defaultvalue>1</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_cache_expire" displayorder="150">
+				<datatype>posint</datatype>
+				<defaultvalue>60</defaultvalue>
+			</setting>
+			<setting varname="ssgti_stocktrader_navblocks" displayorder="160">
+				<datatype>bitfield</datatype>
+				<optioncode>ssgti_stocktrader_navblocks</optioncode>
+				<defaultvalue>1</defaultvalue>
+			</setting>
+		</settinggroup>
+	</options>
+	<helptopics>
+	</helptopics>
+	<cronentries>
+	</cronentries>
+	<faqentries>
+	</faqentries>
+</product>
